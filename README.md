@@ -366,14 +366,6 @@ This project is licensed under the MIT License - see LICENSE file for details.
 - Google Earth Engine platform
 - OpenStreetMap contributors
 - Urban analytics research community
-
-## 📞 Support
-
-For issues, feature requests, or questions:
-- GitHub Issues: [Create an issue](https://github.com/urbansense/issues)
-- Email: support@urbansense.io
-- Documentation: [https://docs.urbansense.io](https://docs.urbansense.io)
-
 ---
 
 **Built with ❤️ for urban sustainability**
