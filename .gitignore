@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+.vuepress/dist
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Media
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.mov
+
+# ML Models
+*.pt
+*.pth
+*.h5
+*.pkl
+*.pickle
+
+# Logs
+logs/
+*.log
+
+# Temporary
+tmp/
+temp/
+.temp/
+
+# OS
+thumbs.db
+.AppleDouble
+.LSOverride
