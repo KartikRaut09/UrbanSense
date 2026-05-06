@@ -1,121 +1,150 @@
 """
-Segmentation Service — Production Implementation
-=================================================
-Uses trained U-Net model (models/unet_slum.pt) to detect slum areas
-in satellite imagery patches.
-
-Falls back to simulation mode if model weights are not found,
-so the API still works during development before training.
+Segmentation Service — Advanced Production Implementation
+=========================================================
+Uses trained EfficientNet-B4 + DeepLabV3+ model (models/segmentation_model.pt).
+Input: 6-channel multi-spectral (RGB + NIR + NDVI + NDWI).
+Falls back to simulation mode if model not trained yet.
 """
 
 import numpy as np
-from typing import Dict, Tuple
+from typing import Dict, Optional
 import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Try importing ML deps — gracefully degrade if not installed
 try:
     import torch
     import segmentation_models_pytorch as smp
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
-    logger.warning("PyTorch/SMP not installed. Segmentation will run in simulation mode.")
+    logger.warning("PyTorch/SMP not installed. Running in simulation mode.")
 
 
 class SegmentationService:
     """
-    Service for slum detection from satellite imagery.
-
-    If model file exists → runs real U-Net inference.
-    If not → returns simulated results (for development/demo).
+    Advanced slum segmentation service.
+    Model: EfficientNet-B4 + DeepLabV3+ with 6-channel multi-spectral input.
+    Falls back to simulation if model not trained.
     """
 
-    MODEL_PATH = "models/unet_slum.pt"
-    ENCODER = "resnet34"
+    MODEL_PATH = "models/segmentation_model.pt"
     CONFIDENCE_THRESHOLD = 0.5
+    # ImageNet mean/std for RGB channels; custom for NIR/NDVI/NDWI
+    NORMALIZE_MEAN = [0.485, 0.456, 0.406, 0.3, 0.5, 0.5]
+    NORMALIZE_STD  = [0.229, 0.224, 0.225, 0.15, 0.2, 0.2]
 
     def __init__(self):
         self.model = None
         self.device = None
+        self.in_channels = 6
+        self.encoder = "efficientnet-b4"
 
         if ML_AVAILABLE and Path(self.MODEL_PATH).exists():
             self._load_model()
         else:
-            if not ML_AVAILABLE:
-                logger.info("SegmentationService: Running in SIMULATION mode (PyTorch not installed)")
-            else:
-                logger.info(f"SegmentationService: Model not found at {self.MODEL_PATH}. "
-                            f"Running in SIMULATION mode. Train model first: python ml/train_segmentation.py")
+            msg = "PyTorch not installed" if not ML_AVAILABLE else \
+                  f"Model not found at {self.MODEL_PATH}"
+            logger.info(f"SegmentationService: {msg}. Running in SIMULATION mode. "
+                        f"Train: python ml/train_segmentation.py")
 
     def _load_model(self):
-        """Load trained U-Net model from disk."""
+        """Load trained EfficientNet-B4 + DeepLabV3+ from checkpoint."""
         try:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self.model = smp.Unet(
-                encoder_name=self.ENCODER,
-                encoder_weights=None,   # No pretrained weights — we load our trained weights
-                in_channels=3,
+            checkpoint = torch.load(self.MODEL_PATH, map_location=self.device)
+            self.encoder = checkpoint.get("encoder", "efficientnet-b4")
+            self.in_channels = checkpoint.get("in_channels", 6)
+
+            self.model = smp.DeepLabV3Plus(
+                encoder_name=self.encoder,
+                encoder_weights=None,
+                in_channels=self.in_channels,
                 classes=1,
                 activation="sigmoid",
             )
-            checkpoint = torch.load(self.MODEL_PATH, map_location=self.device)
-            # Handle both raw state_dict and checkpoints with metadata
-            if "model_state_dict" in checkpoint:
-                self.model.load_state_dict(checkpoint["model_state_dict"])
-            else:
-                self.model.load_state_dict(checkpoint)
+            self.model.load_state_dict(checkpoint["model_state_dict"])
             self.model.eval().to(self.device)
-            logger.info(f"✓ U-Net model loaded from {self.MODEL_PATH} (device: {self.device})")
+            best_iou = checkpoint.get("best_iou", "unknown")
+            logger.info(f"✓ {self.encoder}+DeepLabV3+ loaded (IoU={best_iou}, "
+                        f"channels={self.in_channels}, device={self.device})")
         except Exception as e:
             logger.error(f"Failed to load model: {e}. Falling back to simulation.")
             self.model = None
 
-    def detect_slums(self, image: np.ndarray) -> Dict:
+    def _build_6channel(self, image_rgb: np.ndarray,
+                         nir: Optional[np.ndarray] = None) -> np.ndarray:
+        """
+        Build 6-channel input: [R, G, B, NIR, NDVI, NDWI].
+        If NIR not available, estimate it from RGB luminance.
+        """
+        r, g, b = image_rgb[:,:,0], image_rgb[:,:,1], image_rgb[:,:,2]
+        if nir is None:
+            nir = 0.4 * r + 0.4 * g + 0.2 * b  # synthetic NIR
+        eps = 1e-8
+        ndvi = np.clip((nir - r) / (nir + r + eps), -1, 1)
+        ndwi = np.clip((g - nir) / (g + nir + eps), -1, 1)
+        return np.stack([
+            np.clip(r, 0, 1), np.clip(g, 0, 1), np.clip(b, 0, 1),
+            np.clip(nir, 0, 1),
+            (ndvi + 1) / 2,   # normalize -1..1 → 0..1
+            (ndwi + 1) / 2,
+        ], axis=-1)  # (H, W, 6)
+
+    def detect_slums(self, image: np.ndarray,
+                     nir: Optional[np.ndarray] = None) -> Dict:
         """
         Detect slum areas in a satellite image patch.
 
         Args:
-            image: np.ndarray of shape (H, W, 3), values 0–1 (float32)
-                   RGB bands from Sentinel-2 (already normalized)
+            image : (H, W, 3) float32 array — RGB values 0–1
+            nir   : (H, W) float32 array — NIR band 0–1 (optional but improves accuracy)
 
         Returns:
-            dict with:
-                segmentation_mask  : 2D array (H, W), values 0.0–1.0
-                slum_percentage    : float, % of pixels classified as slum
-                confidence         : float, mean confidence in slum areas
-                model_used         : str, "unet" or "simulation"
+            segmentation_mask   : (H, W) probability map 0–1
+            slum_percentage     : % of image classified as slum
+            confidence          : mean model confidence in slum pixels
+            ndvi_mean           : mean NDVI in slum zones (vegetation indicator)
+            model_used          : "efficientnet_deeplabv3plus" or "simulation"
         """
         if self.model is not None:
-            return self._real_inference(image)
+            return self._real_inference(image, nir)
         else:
             return self._simulate(image)
 
-    def _real_inference(self, image: np.ndarray) -> Dict:
-        """Run actual U-Net inference."""
-        # Normalize (ImageNet stats)
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
-        image_norm = (image - mean) / std
+    def _real_inference(self, image: np.ndarray,
+                         nir: Optional[np.ndarray] = None) -> Dict:
+        """Run 6-channel EfficientNet-B4+DeepLabV3+ inference."""
+        img_6ch = self._build_6channel(image, nir)   # (H, W, 6)
 
-        # Convert to tensor: (H, W, C) → (1, C, H, W)
-        tensor = torch.tensor(image_norm.transpose(2, 0, 1)).unsqueeze(0).float().to(self.device)
+        # Normalize each channel
+        mean = np.array(self.NORMALIZE_MEAN)
+        std = np.array(self.NORMALIZE_STD)
+        img_norm = (img_6ch - mean) / std
+
+        # (H, W, 6) → (1, 6, H, W)
+        tensor = torch.tensor(img_norm.transpose(2, 0, 1)).unsqueeze(0).float().to(self.device)
 
         with torch.no_grad():
-            mask = self.model(tensor).squeeze().cpu().numpy()  # Shape: (H, W)
+            mask = self.model(tensor).squeeze().cpu().numpy()   # (H, W)
 
         slum_pixels = np.sum(mask > self.CONFIDENCE_THRESHOLD)
-        total_pixels = mask.size
-        slum_pct = (slum_pixels / total_pixels) * 100
+        slum_pct = (slum_pixels / mask.size) * 100
+
+        # Compute NDVI in slum zones for additional context
+        r = image[:,:,0]
+        nir_ch = nir if nir is not None else 0.4*image[:,:,0] + 0.4*image[:,:,1] + 0.2*image[:,:,2]
+        ndvi = (nir_ch - r) / (nir_ch + r + 1e-8)
+        slum_mask_binary = mask > self.CONFIDENCE_THRESHOLD
+        ndvi_in_slums = float(np.mean(ndvi[slum_mask_binary])) if slum_pixels > 0 else 0.0
 
         return {
             "segmentation_mask": mask.tolist(),
             "slum_percentage": round(float(slum_pct), 2),
-            "confidence": float(np.mean(mask[mask > self.CONFIDENCE_THRESHOLD]))
-                          if slum_pixels > 0 else 0.0,
-            "model_used": "unet",
+            "confidence": float(np.mean(mask[slum_mask_binary])) if slum_pixels > 0 else 0.0,
+            "ndvi_mean_in_slums": round(ndvi_in_slums, 4),
+            "model_used": f"{self.encoder}_deeplabv3plus",
         }
 
     def _simulate(self, image: np.ndarray) -> Dict:

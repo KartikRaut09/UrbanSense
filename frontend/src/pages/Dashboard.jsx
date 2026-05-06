@@ -7,11 +7,21 @@ import InteractiveMap from '../components/InteractiveMap'
 import { Activity, MapPin, AlertTriangle, Users } from 'lucide-react'
 
 function Dashboard() {
-  const { fetchRegions, regions, loading } = useStore()
+  const { fetchRegions, regions } = useStore()
 
   useEffect(() => {
     fetchRegions()
-  }, [])
+  }, [fetchRegions])
+
+  const totalPopulation = regions.reduce((sum, region) => sum + (region.population || 0), 0)
+  const totalArea = regions.reduce((sum, region) => sum + (region.area_sqkm || 0), 0)
+  const avgSlumPercentage = regions.length
+    ? regions.reduce((sum, region) => sum + (region.slum_percentage || 0), 0) / regions.length
+    : 0
+  const criticalZones = regions.filter((region) => (region.slum_percentage || 0) >= 85).length
+  const formatPopulation = (value) => value >= 1000000
+    ? `${(value / 1000000).toFixed(1)}M`
+    : value.toLocaleString()
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -62,7 +72,7 @@ function Dashboard() {
           <StatCard
             icon={Users}
             label="Total Population"
-            value="3.2M"
+            value={formatPopulation(totalPopulation)}
             trend={8}
             color="green"
           />
@@ -71,7 +81,7 @@ function Dashboard() {
           <StatCard
             icon={AlertTriangle}
             label="Critical Zones"
-            value={12}
+            value={criticalZones}
             trend={3}
             color="red"
           />
@@ -79,8 +89,8 @@ function Dashboard() {
         <motion.div variants={itemVariants}>
           <StatCard
             icon={Activity}
-            label="Avg Risk Score"
-            value="6.8/10"
+            label="Avg Slum Share"
+            value={`${avgSlumPercentage.toFixed(1)}%`}
             trend={-2}
             color="yellow"
           />
@@ -111,12 +121,12 @@ function Dashboard() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Slum Coverage</span>
-                <span className="text-cyan-400 font-bold">542.5 km²</span>
+                <span className="text-cyan-400 font-bold">{totalArea.toFixed(1)} km²</span>
               </div>
               <div className="w-full bg-slate-700/30 rounded-full h-2">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: '68%' }}
+                  animate={{ width: `${Math.min(avgSlumPercentage, 100)}%` }}
                   transition={{ duration: 1 }}
                   className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full"
                 />
@@ -148,7 +158,7 @@ function Dashboard() {
                   className="flex justify-between p-2 hover:bg-slate-700/30 rounded cursor-pointer transition-all"
                 >
                   <span className="text-slate-300">{region.name || `Region ${idx + 1}`}</span>
-                  <span className="text-cyan-400 text-xs font-bold">{(region.area_km2 || 2.5).toFixed(1)} km²</span>
+                  <span className="text-cyan-400 text-xs font-bold">{(region.area_sqkm || 0).toFixed(1)} km²</span>
                 </motion.div>
               ))}
             </div>

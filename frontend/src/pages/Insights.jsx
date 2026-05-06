@@ -5,11 +5,11 @@ import RecommendationsList from '../components/RecommendationsList'
 import { Lightbulb, TrendingUp, AlertTriangle } from 'lucide-react'
 
 function Insights() {
-  const { fetchInsights, insightsData, loading } = useStore()
+  const { fetchInsights, insightsData } = useStore()
 
   useEffect(() => {
     fetchInsights('REGION_001')
-  }, [])
+  }, [fetchInsights])
 
   const containerVariants = {
     hidden: { opacity: 0 },

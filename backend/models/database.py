@@ -11,16 +11,16 @@ class Base(DeclarativeBase):
 
 class Region(Base):
     __tablename__ = "regions"
-    
+
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False)
+    city = Column(String(255), nullable=True)
     country = Column(String(255), nullable=False)
-    north_latitude = Column(Float, nullable=False)
-    south_latitude = Column(Float, nullable=False)
-    east_longitude = Column(Float, nullable=False)
-    west_longitude = Column(Float, nullable=False)
-    area_km2 = Column(Float)
-    population_estimate = Column(Integer)
+    latitude = Column(Float, nullable=True)     # center point latitude
+    longitude = Column(Float, nullable=True)    # center point longitude
+    area_sqkm = Column(Float, nullable=True)
+    population = Column(Integer, nullable=True)
+    slum_percentage = Column(Float, nullable=True)
     last_analysis = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -34,7 +34,7 @@ class Analysis(Base):
     slum_percentage = Column(Float)
     building_count = Column(Integer)
     infrastructure_score = Column(Float)
-    metadata = Column(JSON)
+    analysis_metadata = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class RiskAssessment(Base):

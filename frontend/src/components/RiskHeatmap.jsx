@@ -1,15 +1,26 @@
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Flame, Droplet, Truck } from 'lucide-react'
+import { Flame, Droplet, Truck } from 'lucide-react'
 
 function RiskHeatmapComponent({ riskData }) {
   const [activeRisk, setActiveRisk] = useState('overall')
+  const scores = riskData?.risk_scores || {}
 
   const riskTypes = [
-    { id: 'fire', label: 'Fire Risk', icon: Flame, color: 'from-red-500 to-orange-500', value: 0.75 },
-    { id: 'flood', label: 'Flood Risk', icon: Droplet, color: 'from-blue-500 to-cyan-500', value: 0.45 },
-    { id: 'access', label: 'Accessibility', icon: Truck, color: 'from-yellow-500 to-orange-500', value: 0.65 },
+    { id: 'fire', label: 'Fire Risk', icon: Flame, color: 'from-red-500 to-orange-500', value: scores.fire_risk ?? 0.65 },
+    { id: 'flood', label: 'Flood Risk', icon: Droplet, color: 'from-blue-500 to-cyan-500', value: scores.flood_risk ?? 0.45 },
+    { id: 'access', label: 'Accessibility', icon: Truck, color: 'from-yellow-500 to-orange-500', value: scores.accessibility_risk ?? 0.55 },
   ]
+  const activeValue = activeRisk === 'overall'
+    ? scores.overall_risk ?? 0.6
+    : riskTypes.find((risk) => risk.id === activeRisk)?.value ?? 0.6
+  const heatmapCells = useMemo(() => (
+    Array.from({ length: 64 }, (_, i) => {
+      const wave = Math.sin((i + 1) * 1.7) * 0.16
+      const rowBias = (Math.floor(i / 8) - 3.5) * 0.018
+      return Math.min(1, Math.max(0.05, activeValue + wave + rowBias))
+    })
+  ), [activeValue])
 
   return (
     <div className="space-y-6">
@@ -52,8 +63,7 @@ function RiskHeatmapComponent({ riskData }) {
         className="grid grid-cols-8 gap-1 bg-slate-800/30 p-4 rounded-lg border border-slate-700/30"
       >
         <AnimatePresence>
-          {Array.from({ length: 64 }).map((_, i) => {
-            const riskValue = Math.random()
+          {heatmapCells.map((riskValue, i) => {
             const getColor = () => {
               if (riskValue > 0.7) return 'bg-red-600 hover:bg-red-500'
               if (riskValue > 0.5) return 'bg-orange-500 hover:bg-orange-400'

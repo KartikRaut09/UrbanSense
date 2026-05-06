@@ -1,6 +1,6 @@
 import React from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, AlertCircle, Users, Zap } from 'lucide-react'
+import { TrendingUp } from 'lucide-react'
 
 function StatCard({ icon: Icon, label, value, trend, color = 'cyan' }) {
   const colorClasses = {
@@ -26,7 +26,7 @@ function StatCard({ icon: Icon, label, value, trend, color = 'cyan' }) {
         <div className="flex-1">
           <p className="text-slate-400 text-sm font-medium mb-2">{label}</p>
           <p className="text-3xl font-bold text-white mb-2">{value}</p>
-          {trend && (
+          {typeof trend === 'number' && (
             <div className="flex items-center gap-1 text-xs">
               <TrendingUp size={14} className={trend >= 0 ? 'text-green-400' : 'text-red-400'} />
               <span className={trend >= 0 ? 'text-green-400' : 'text-red-400'}>

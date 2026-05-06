@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
 from typing import List
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
     
     model_config = ConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).with_name(".env")),
         env_file_encoding="utf-8"
     )
 

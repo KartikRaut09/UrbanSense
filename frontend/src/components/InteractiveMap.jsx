@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '../stores/useStore'
 import { Layers, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 
 function InteractiveMap() {
   const { mapView, setMapView, layersVisible, toggleLayer } = useStore()
-  const [mapContainer, setMapContainer] = useState(null)
 
   // Layer toggle controls
   const layers = [

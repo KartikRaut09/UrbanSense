@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import api from '../services/api'
 
-export const useStore = create((set, get) => ({
+export const useStore = create((set) => ({
   // State
   selectedRegion: null,
   regions: [],

@@ -1,82 +1,118 @@
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
+from services.risk_service import RiskAnalysisService, GrowthPredictionService
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Instantiate services once at module level
+risk_service = RiskAnalysisService()
+growth_service = GrowthPredictionService()
+
 
 class RiskAssessmentRequest(BaseModel):
     latitude: float
     longitude: float
     area_name: str
+    # Risk input features — all optional with sensible defaults
+    building_density: float = 0.7
+    roof_flammability: float = 0.6
+    road_accessibility: float = 0.3
+    elevation_m: float = 20.0
+    dist_to_water_m: float = 300.0
+    drainage_quality: float = 0.2
+    hospital_dist_m: float = 3000.0
+    road_density: float = 0.3
+    population_density: float = 50000.0
+    ndvi: float = 0.05
 
-class RiskScores(BaseModel):
-    fire_risk: float
-    flood_risk: float
-    accessibility_risk: float
-    overall_risk: float
 
-class RiskResponse(BaseModel):
-    location: str
-    risk_scores: RiskScores
-    risk_factors: dict
-    recommendations: List[str]
+class GrowthRequest(BaseModel):
+    region_id: str
+    historical_areas: List[float]  # Annual area in sq km, oldest first
+    forecast_years: int = 5
 
-@router.post("/risk/assess", response_model=RiskResponse)
+
+@router.post("/risk/assess")
 async def assess_risks(request: RiskAssessmentRequest):
     """
-    Assess multiple risk factors for a location
+    Assess fire, flood, and accessibility risks for a location.
+    Uses XGBoost model if trained, otherwise formula-based calculation.
     """
     try:
-        risk_scores = RiskScores(
-            fire_risk=0.75,
-            flood_risk=0.45,
-            accessibility_risk=0.65,
-            overall_risk=0.62
-        )
-        
-        recommendations = [
-            "Install fire hydrants in high-density areas",
-            "Improve drainage systems for flood prevention",
-            "Develop emergency access roads",
-            "Enhance building materials resistance"
-        ]
-        
-        return RiskResponse(
-            location=request.area_name,
-            risk_scores=risk_scores,
-            risk_factors={
-                "building_density": 850,
-                "roof_flammability": 0.8,
-                "elevation": 25,
-                "proximity_to_water": 150
+        feature_dict = {
+            "building_density": request.building_density,
+            "roof_flammability": request.roof_flammability,
+            "road_accessibility": request.road_accessibility,
+            "elevation_m": request.elevation_m,
+            "dist_to_water_m": request.dist_to_water_m,
+            "drainage_quality": request.drainage_quality,
+            "hospital_dist_m": request.hospital_dist_m,
+            "road_density": request.road_density,
+            "population_density": request.population_density,
+            "ndvi": request.ndvi,
+        }
+
+        result = risk_service.assess_risk(feature_dict)
+
+        return {
+            "location": request.area_name,
+            "coordinates": {"latitude": request.latitude, "longitude": request.longitude},
+            "risk_scores": {
+                "fire_risk": result["fire_risk"],
+                "flood_risk": result["flood_risk"],
+                "accessibility_risk": result["accessibility_risk"],
+                "overall_risk": result["overall_risk"],
             },
-            recommendations=recommendations
-        )
+            "risk_level": result["risk_level"],
+            "model_used": result.get("model_used", "formula"),
+            "recommendations": result.get("interventions", []),
+        }
     except Exception as e:
+        logger.error(f"Risk assessment error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/risk/growth")
+async def predict_growth(request: GrowthRequest):
+    """
+    Predict slum growth for the next N years.
+    Uses LSTM model if trained, otherwise trend extrapolation.
+    """
+    try:
+        result = growth_service.predict_growth(
+            historical_areas=request.historical_areas,
+            forecast_years=request.forecast_years,
+        )
+        return {"region_id": request.region_id, **result}
+    except Exception as e:
+        logger.error(f"Growth prediction error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/risk/heatmap/{region_id}")
 async def get_risk_heatmap(region_id: str):
-    """
-    Get risk heatmap for a region
-    """
+    """Get risk heatmap for a region."""
     return {
         "region_id": region_id,
-        "heatmap_url": "s3://urbansense-data/heatmaps/region_" + region_id + ".tif",
-        "generated_at": "2024-01-10T12:00:00Z"
+        "heatmap_url": f"s3://urbansense-data/heatmaps/{region_id}.tif",
+        "generated_at": "2024-01-10T12:00:00Z",
+        "note": "S3 integration not yet configured.",
     }
+
 
 @router.get("/risk/historical/{area_id}")
 async def get_historical_risks(area_id: str, months: int = Query(12, ge=1, le=60)):
-    """
-    Get historical risk trends
-    """
+    """Get historical risk trends."""
     return {
         "area_id": area_id,
         "time_period_months": months,
         "risk_trend": "increasing",
         "trend_data": [
-            {"month": i, "fire_risk": 0.5 + i*0.02, "flood_risk": 0.3 + i*0.01}
+            {"month": i, "fire_risk": round(0.5 + i * 0.02, 3),
+             "flood_risk": round(0.3 + i * 0.01, 3)}
             for i in range(months)
-        ]
+        ],
     }

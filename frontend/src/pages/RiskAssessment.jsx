@@ -6,12 +6,15 @@ import RiskHeatmap from '../components/RiskHeatmap'
 import { AlertTriangle, Flame, Droplet, Truck } from 'lucide-react'
 
 function RiskAssessment() {
-  const { fetchRiskAssessment, riskData, loading } = useStore()
-  const [selectedRegion, setSelectedRegion] = useState('REGION_001')
+  const { fetchRiskAssessment, riskData } = useStore()
+  const [selectedRegion] = useState('REGION_001')
 
   useEffect(() => {
     fetchRiskAssessment(selectedRegion)
-  }, [selectedRegion])
+  }, [fetchRiskAssessment, selectedRegion])
+
+  const scores = riskData?.risk_scores || {}
+  const riskValue = (key, fallback) => `${((scores[key] ?? fallback) * 10).toFixed(1)}/10`
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -48,7 +51,7 @@ function RiskAssessment() {
           <StatCard
             icon={Flame}
             label="Fire Risk"
-            value="7.5/10"
+            value={riskValue('fire_risk', 0.75)}
             trend={5}
             color="red"
           />
@@ -57,7 +60,7 @@ function RiskAssessment() {
           <StatCard
             icon={Droplet}
             label="Flood Risk"
-            value="4.5/10"
+            value={riskValue('flood_risk', 0.45)}
             trend={2}
             color="blue"
           />
@@ -66,7 +69,7 @@ function RiskAssessment() {
           <StatCard
             icon={Truck}
             label="Accessibility"
-            value="5.5/10"
+            value={riskValue('accessibility_risk', 0.55)}
             trend={-1}
             color="yellow"
           />
@@ -75,7 +78,7 @@ function RiskAssessment() {
           <StatCard
             icon={AlertTriangle}
             label="Overall Risk"
-            value="6.2/10"
+            value={riskValue('overall_risk', 0.62)}
             trend={3}
             color="red"
           />
